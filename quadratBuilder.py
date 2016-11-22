@@ -22,6 +22,7 @@
 """
 from PyQt4.QtCore import QSettings, QTranslator, qVersion, QCoreApplication
 from PyQt4.QtGui import QAction, QIcon
+from qgis.core import QgsMapLayerRegistry
 # Initialize Qt resources from file resources.py
 import resources
 # Import the code for the dialog
@@ -65,6 +66,7 @@ class quadratBuilder:
         # TODO: We are going to let the user set this up in a future iteration
         self.toolbar = self.iface.addToolBar(u'quadratBuilder')
         self.toolbar.setObjectName(u'quadratBuilder')
+        
 
     # noinspection PyMethodMayBeStatic
     def tr(self, message):
@@ -182,12 +184,30 @@ class quadratBuilder:
 
     def run(self):
         """Run method that performs all the real work"""
+        
+        # Clear selection drop down when dialogue pops
+        self.dlg.lineSelect.clear()
+
+        # Get all layers
+        layerRegistery = QgsMapLayerRegistry.instance()
+        
+        # Put layers in the dropdown box
+        layer_list = []
+        for layer in layerRegistery.mapLayers().values():
+            layer_list.append(layer.name())
+        self.dlg.lineSelect.addItems(sorted(layer_list))
+        
         # show the dialog
         self.dlg.show()
+        
         # Run the dialog event loop
         result = self.dlg.exec_()
         # See if OK was pressed
         if result:
-            # Do something useful here - delete the line containing pass and
-            # substitute with your code.
-            pass
+            
+            # Selects the layer selected in the dropdown
+            selectedLayerName = self.dlg.lineSelect.currentText()
+            selectedLayer = layerRegistery.mapLayersByName(selectedLayerName)[0]
+            
+            # Sets the active layer
+            self.iface.setActiveLayer(selectedLayer)
