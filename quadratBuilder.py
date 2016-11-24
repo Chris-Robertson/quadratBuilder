@@ -22,7 +22,7 @@
 """
 from PyQt4.QtCore import QSettings, QTranslator, qVersion, QCoreApplication
 from PyQt4.QtGui import QAction, QIcon
-from qgis.core import QgsMapLayerRegistry
+from qgis.core import *
 # Initialize Qt resources from file resources.py
 import resources
 # Import the code for the dialog
@@ -59,7 +59,15 @@ class quadratBuilder:
             if qVersion() > '4.3.3':
                 QCoreApplication.installTranslator(self.translator)
 
-
+        #==============================================================================
+        # CONSTANTS
+        #==============================================================================
+        self.QUADRAT_LAYER_NAME = "Quadrats"
+                
+        
+#        self.ql = 0
+#        self.qw = 0
+        
         # Declare instance attributes
         self.actions = []
         self.menu = self.tr(u'&Quadrat Builder')
@@ -189,12 +197,14 @@ class quadratBuilder:
         self.dlg.lineSelect.clear()
 
         # Get all layers
-        layerRegistery = QgsMapLayerRegistry.instance()
+        layers = QgsMapLayerRegistry.instance()
         
         # Put layers in the dropdown box
         layer_list = []
-        for layer in layerRegistery.mapLayers().values():
+        print("Adding layers to dropdown...")
+        for layer in layers.mapLayers().values():
             layer_list.append(layer.name())
+            print("Added layer: " + layer.name())
         self.dlg.lineSelect.addItems(sorted(layer_list))
         
         # show the dialog
@@ -205,9 +215,76 @@ class quadratBuilder:
         # See if OK was pressed
         if result:
             
+            # Get user entered dimensions
+            #TODO check for int
+            self.ql = self.dlg.qLengthInput.text()
+            self.qw = self.dlg.qWidthInput.text()
+            
             # Selects the layer selected in the dropdown
             selectedLayerName = self.dlg.lineSelect.currentText()
-            selectedLayer = layerRegistery.mapLayersByName(selectedLayerName)[0]
+            selectedLayer = layers.mapLayersByName(selectedLayerName)[0]
+            selectedLayer.selectAll()
+            print("Selected layer: " + str(selectedLayer.name()))
+            print(selectedLayer.wkbType())
+            print(type(selectedLayer))
+            print(str(selectedLayer.dataProvider()))
             
-            # Sets the active layer
-            self.iface.setActiveLayer(selectedLayer)
+            # Get all features from selected layer and iterate through them
+            #TODO Check the number of features, warn if more than one
+            features = selectedLayer.getFeatures()
+            print(str(selectedLayer.name()) + " features loaded...")
+            for feature in features:
+                print("Feature added: ID%d" % feature.id())
+                print(type(feature))
+                
+                # Gets the geometry of the feature
+                geom = feature.geometry()
+                print("Geometry:")
+                print(geom.wkbType())
+                print(type(geom))
+                print(geom.asPolyline())
+                
+                # Bounding box will give the start and end points of a line
+                bbox = geom.boundingBox()
+                print("Bounding box:")
+                print(bbox.toString())
+            
+            # Get the crs
+            crs = selectedLayer.crs()
+            print("CRS: " + str(crs.description()))
+            
+            # Create a memory layer with the selected layer's crs
+            memLayer = QgsVectorLayer("Polygon?crs=epsg:" + unicode(crs.postgisSrid()) + "&index=yes&field=name:string(20)&field=sym:string(20)", self.QUADRAT_LAYER_NAME, "memory") #creating fields in advance for GPX export
+            
+            # Adds memory layer to layer list and turns on editing
+            QgsMapLayerRegistry.instance().addMapLayer(memLayer)
+            memLayer.startEditing()
+            
+            # Clean up after everything is done
+            selectedLayer.removeSelection()
+            
+#==============================================================================
+#             GPX
+#             uri = "path/to/gpx/file.gpx?type=track"
+#             vlayer = QgsVectorLayer(uri, "layer name you like", "gpx")
+#==============================================================================
+            
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
