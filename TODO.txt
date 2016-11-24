@@ -1,0 +1,20 @@
+select line target layer, qLine
+ask length of quadrats, qLength
+ask width of quadrats, 	qWidth
+create points along qLine at qLength
+at points create perpLine of qWidth perpendicular to qLine
+create buffer at qWidth along line
+split buffer into quadrats at perpLine
+
+
+
+
+
+
+TODO
+set length of site
+give option to resize quadrats to all be even length within site
+split quadrats into separate features
+add centroids to quadrats
+export quadrats as GPX tracks
+export centroids as GPX waypoints
