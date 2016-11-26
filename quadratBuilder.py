@@ -20,9 +20,10 @@
  *                                                                         *
  ***************************************************************************/
 """
-from PyQt4.QtCore import QSettings, QTranslator, qVersion, QCoreApplication
-from PyQt4.QtGui import QAction, QIcon
+from PyQt4.QtCore import *
+from PyQt4.QtGui import *
 from qgis.core import *
+from qgis.gui import *
 # Initialize Qt resources from file resources.py
 import resources
 # Import the code for the dialog
@@ -59,15 +60,17 @@ class quadratBuilder:
             if qVersion() > '4.3.3':
                 QCoreApplication.installTranslator(self.translator)
 
-        #==============================================================================
-        # CONSTANTS
-        #==============================================================================
+#==============================================================================
+# CONSTANTS
+#==============================================================================
         self.QUADRAT_LAYER_NAME = "Quadrats"
-                
+        self.MSG_BOX_TITLE = "Quadrat Builder"
+
         
-#        self.ql = 0
-#        self.qw = 0
-        
+        # Get user entered dimensions
+        self.ql = 0
+        self.qw = 0
+
         # Declare instance attributes
         self.actions = []
         self.menu = self.tr(u'&Quadrat Builder')
@@ -142,7 +145,7 @@ class quadratBuilder:
         :rtype: QAction
         """
 
-        # Create the dialog (after translation) and keep reference
+#        # Create the dialog (after translation) and keep reference
         self.dlg = quadratBuilderDialog()
 
         icon = QIcon(icon_path)
@@ -193,20 +196,6 @@ class quadratBuilder:
     def run(self):
         """Run method that performs all the real work"""
         
-        # Clear selection drop down when dialogue pops
-        self.dlg.lineSelect.clear()
-
-        # Get all layers
-        layers = QgsMapLayerRegistry.instance()
-        
-        # Put layers in the dropdown box
-        layer_list = []
-        print("Adding layers to dropdown...")
-        for layer in layers.mapLayers().values():
-            layer_list.append(layer.name())
-            print("Added layer: " + layer.name())
-        self.dlg.lineSelect.addItems(sorted(layer_list))
-        
         # show the dialog
         self.dlg.show()
         
@@ -215,43 +204,37 @@ class quadratBuilder:
         # See if OK was pressed
         if result:
             
-            # Get user entered dimensions
-            #TODO check for int
-            self.ql = self.dlg.qLengthInput.text()
-            self.qw = self.dlg.qWidthInput.text()
+            # Get user entered values
+            self.ql = self.dlg.qLengthInput.value()
+            self.qw = self.dlg.qWidthInput.value()
+            # Check quadrat dimensions have not been set to 0
+            if self.ql <= 0 or self.qw <= 0:
+                QMessageBox.warning(self.iface.mainWindow(), self.MSG_BOX_TITLE, "Length and width must be greater than zero", QMessageBox.Ok, QMessageBox.Ok)
+                # Open dialogue box again
+                self.run()
+
+            # Gets the features from user selection
+            selectedLayer = self.iface.mapCanvas().currentLayer()
+            selectedFeatures = selectedLayer.selectedFeatures()
+            #line = QgsGeometry()#.fromWkt('GEOMETRYCOLLECTION EMPTY')
+            line = QgsGeometry.fromPolyline([])
             
-            # Selects the layer selected in the dropdown
-            selectedLayerName = self.dlg.lineSelect.currentText()
-            selectedLayer = layers.mapLayersByName(selectedLayerName)[0]
-            selectedLayer.selectAll()
-            print("Selected layer: " + str(selectedLayer.name()))
-            print(selectedLayer.wkbType())
-            print(type(selectedLayer))
-            print(str(selectedLayer.dataProvider()))
+            for feat in selectedFeatures:
+                # Check selected features are lines
+                if feat.geometry().wkbType() != QGis.WKBLineString:
+                    QMessageBox.warning(self.iface.mainWindow(), self.MSG_BOX_TITLE, "Selected features must be lines", QMessageBox.Ok, QMessageBox.Ok)
+                    return                    
+                # Combine multiple lines
+                line = line.combine(feat.geometry())
             
-            # Get all features from selected layer and iterate through them
-            #TODO Check the number of features, warn if more than one
-            features = selectedLayer.getFeatures()
-            print(str(selectedLayer.name()) + " features loaded...")
-            for feature in features:
-                print("Feature added: ID%d" % feature.id())
-                print(type(feature))
+            # Apply Simplify and Smoothing if checked
+            if self.dlg.simplifyCheck:
+                line = self.lineSimplify(line)                
+            if self.dlg.smoothCheck:
+                line = self.lineSmooth(line)
                 
-                # Gets the geometry of the feature
-                geom = feature.geometry()
-                print("Geometry:")
-                print(geom.wkbType())
-                print(type(geom))
-                print(geom.asPolyline())
-                
-                # Bounding box will give the start and end points of a line
-                bbox = geom.boundingBox()
-                print("Bounding box:")
-                print(bbox.toString())
-            
             # Get the crs
             crs = selectedLayer.crs()
-            print("CRS: " + str(crs.description()))
             
             # Create a memory layer with the selected layer's crs
             memLayer = QgsVectorLayer("Polygon?crs=epsg:" + unicode(crs.postgisSrid()) + "&index=yes&field=name:string(20)&field=sym:string(20)", self.QUADRAT_LAYER_NAME, "memory") #creating fields in advance for GPX export
@@ -260,15 +243,210 @@ class quadratBuilder:
             QgsMapLayerRegistry.instance().addMapLayer(memLayer)
             memLayer.startEditing()
             
+            # Create a list of new features to pass to the data provider
+            quadrats = []
+            
+            start = 0
+            quadrats.extend(self.handle_line(start, float(self.ql), line))
+            
+#            quadrats = quadrats.splitQuadrats(quadrats, line)
+            
+            # Add features to memory layer
+            provider = memLayer.dataProvider()
+            provider.addFeatures(quadrats)
+            
+            # Refresh the canvas
+            # If caching is enabled, a simple canvas refresh might not be sufficient
+            # to trigger a redraw and you must clear the cached image for the layer
+            if self.iface.mapCanvas().isCachingEnabled():
+                selectedLayer.setCacheImage(None)
+            else:
+                self.iface.mapCanvas().refresh()
+            
+    def handle_line(self, start, quadratLength, line):
+        '''Creates quadrats along the line
+        '''
+        length = line.length()
+        distanceAlongLine = start
+#        if 0 < end <= length:
+#            length = end
+        # array with all generated features
+        feats = []
+        while distanceAlongLine <= length:
+            # Create a new QgsFeature and assign it the new geometry
+            
+            newQuadrat = self.createQuadrat(line, distanceAlongLine, quadratLength)
+            print("newQuadrat")
+            print(newQuadrat)
+            for i in range(len(newQuadrat)):
+                if newQuadrat[i] is not None:
+                    newFeature = QgsFeature()
+                    newFeature.setGeometry(newQuadrat[i])
+                    feats.append(newFeature)
+            # Increase the distance
+            distanceAlongLine += quadratLength
+        return feats
+    
+    def createQuadrat(self, line, distanceAlongLine, quadratLength):
+        ''' Creates quadrats along line by making a temp line for the length of the quadrat and
+            applying a buffer to it.
+            
+            Borrowed quite heavily from https://github.com/rduivenvoorde/featuregridcreator
+        '''
+        # Get current point along line
+        startPoint = line.interpolate(distanceAlongLine)
+        # Get point that will be the end of this quadrat
+        endPoint = line.interpolate(distanceAlongLine + quadratLength)
+        
+        tempLine = QgsGeometry.fromPolyline([startPoint.asPoint(), endPoint.asPoint()])
+        
+        segment1 = line.closestSegmentWithContext(startPoint.asPoint())
+        segment2 = line.closestSegmentWithContext(endPoint.asPoint())
+        ii = 1
+        for i in range(segment1[2], segment2[2]):
+            #new_vertex = line_geom.vertexAt(segment_context[2])
+            new_vertex = line.vertexAt(i)
+            tempLine.insertVertex(new_vertex.x(), new_vertex.y(), ii)
+            ii += 1
+        
+        quadrat = tempLine.buffer(self.qw, 12, 2, 0, 1)
+        quadrat = self.splitQuadrat(quadrat, tempLine)
+#        quadrat.splitGeometry(quadrat.asPolygon(), tempLine)
+        
+        return quadrat
+        
+    def lineSmooth(self, line):
+        ''' Takes a line geometry and applies smooth
+        '''
+        # Get parameter values from the dialogue
+        iterations = self.dlg.smoothIterations.value()
+        offset = self.dlg.smoothOffset.value()
+        minDist = self.dlg.smoothMinDist.value()
+        maxAngle = self.dlg.smoothMaxAngle.value()
+        
+        # For some reason, smooth() throws a "Too many arguments" Type Error when passed more than 2 pararmeters
+        # It still uses the four parameters though...
+        # This try...catch works around the issue
+        try:
+            line = line.smooth(iterations, offset, minDist, maxAngle)
+        except TypeError:
+            pass
+        
+        return line
+
+    def lineSimplify(self, line):
+        ''' Takes a line geometry and applies smoothing
+        '''
+        # Get parameter values from the dialogue
+        tolerance = self.dlg.simpleTolerance.value()
+        
+        return line.simplify(tolerance)
+    
+    def splitQuadrat(self, quadrat, line):
+        ''' Takes a polygon and a line
+            Splits the polygon with the line
+        '''
+        # Split the quadrat
+#        splitQuadratFirstHalf = quadrat.splitGeometry(line.asPolyline(), True) # true if topological editing is enabled
+        splitQuadratHalf_1 = quadrat.reshapeGeometry(line.asPolyline())
+        return splitQuadratHalf_1
+                
+#==============================================================================
+#     def create_point_or_trench_on_line(self, line, distance, interval):
+#         # Get a point on the line at current distance
+#         geom = line.interpolate(distance)  # interpolate returns a QgsGeometry
+#         # trench width and length in meters
+#         w = self.qw
+#         l = self.ql
+#         x1 = geom.asPoint().x()
+#         y1 = geom.asPoint().y()
+#         # a non rotated trench
+#         #return QgsGeometry.fromRect(QgsRectangle(x1-l, y1-w, x1+l, y1+w))
+#         # a trench in the direction of the line
+#         geom2 = line.interpolate(distance + l)  # interpolate returns a QgsGeometry-point
+#         vertices = [geom.asPoint()]
+#         # BUT check if there are vertices on this line_geom in between
+#         # see if there are vertices on the path here...
+#         vertices.append(geom2.asPoint())
+#         newLine = QgsGeometry.fromPolyline(vertices)
+#         # checking if length of the generated line is as requested
+#         # if the difference is more then 1 cm (comparing floats....)
+#         # we either do NOT add it, or generate rounded caps
+#         #if (int(l) - int(line.length())) > 1.0:
+#             # buffer(distance, segments, endcapstyle, joinstyle, mitrelimit)
+#             # endcap 2 = flat
+#             # join 1 = round
+#             #trench = line.buffer(w/2, 4, 1, 1, 1)
+#             #trench = None
+#             # print line_geom.touches(geom2)  # true
+#             # line.closestSegmentWithContext(point, minDistPoint, afterVertex, 0, 0.00000001)
+#             # returns a segmentWithContext like: (0.0, (104642,490373), 2)
+#             # being: distance, point, segmentAfter
+#         segment_context = line.closestSegmentWithContext(geom.asPoint())
+#         segment_context2 = line.closestSegmentWithContext(geom2.asPoint())
+#         ii = 1
+#         for i in range(segment_context[2], segment_context2[2]):
+#             #new_vertex = line_geom.vertexAt(segment_context[2])
+#             new_vertex = line.vertexAt(i)
+#             newLine.insertVertex(new_vertex.x(), new_vertex.y(), ii)
+#             ii += 1
+#         trench = line.buffer(w, 0, 2, 1, 1)
+#         # trench = line.buffer(w/2, 1, 1, 1, 1) # 'round' endcap
+#         return trench#, self.RESULT_FEATURE_TRENCH_BENDED_OR_SHORT  # 2 meaning this is not a straight trench (a bended one)
+#==============================================================================
+#        else:
+#            # buffer(distance, segments, endcapstyle, joinstyle, mitrelimit)
+#            # endcap 2 = flat
+#            # join 1 = round
+#            trench = line.singleSidedBuffer(w, 0, SideLeft, 1, 1)
+#            return trench#, self.RESULT_FEATURE_TRENCH_STRAIGHT  # 1 meaning a straigh trench
+#            else:
+#                # a line with points
+#                return geom, self.RESULT_FEATURE_POINT  # 0 meaning a point
+        
             # Clean up after everything is done
-            selectedLayer.removeSelection()
+#            selectedLayer.removeSelection()
             
 #==============================================================================
-#             GPX
-#             uri = "path/to/gpx/file.gpx?type=track"
-#             vlayer = QgsVectorLayer(uri, "layer name you like", "gpx")
+# GPX
+# uri = "path/to/gpx/file.gpx?type=track"
+# vlayer = QgsVectorLayer(uri, "layer name you like", "gpx")
 #==============================================================================
-            
+#==============================================================================
+# # If caching is enabled, a simple canvas refresh might not be sufficient
+# # to trigger a redraw and you must clear the cached image for the layer
+# if iface.mapCanvas().isCachingEnabled():
+#     layer.setCacheImage(None)
+# else:
+#     iface.mapCanvas().refresh()
+#==============================================================================
+#==============================================================================
+# Symbol Renderer
+# # http://snorf.net/blog/2014/03/04/symbology-of-vector-layers-in-qgis-python-plugins/
+# # Categorized symbol renderer for different type of grid features: points, straight trench and bended or stort trench
+# # define a lookup: value -> (color, label)
+# ftype = {
+#     '0': ('#00f', self.tr('hole')),
+# }
+# if self.feature_type() == self.TRENCH_FEATURES:
+#     ftype = {
+#         '1': ('#00f', self.tr('trench straight')),
+#         '2': ('#f00', self.tr('trench bend or short')),
+#         #'': ('#000', 'Unknown'),
+#     }
+# # create a category for each
+# categories = []
+# for feature_type, (color, label) in ftype.items():
+#     symbol = QgsSymbolV2.defaultSymbol(memory_lyr.geometryType())
+#     symbol.setColor(QColor(color))
+#     category = QgsRendererCategoryV2(feature_type, symbol, label)
+#     categories.append(category)
+# # create the renderer and assign it to a layer
+# expression = 'ftype'  # field name
+# renderer = QgsCategorizedSymbolRendererV2(expression, categories)
+# memory_lyr.setRendererV2(renderer)
+#==============================================================================
+    
 
 
 
