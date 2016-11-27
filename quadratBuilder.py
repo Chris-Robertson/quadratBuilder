@@ -64,7 +64,9 @@ class quadratBuilder:
 # CONSTANTS
 #==============================================================================
         self.QUADRAT_LAYER_NAME = "Quadrats"
+        self.CENTROID_LAYER_NAME = "Centroids"
         self.MSG_BOX_TITLE = "Quadrat Builder"
+        
 
         
         # Get user entered dimensions
@@ -216,28 +218,46 @@ class quadratBuilder:
             # Check for valid selection
             if not self.getSelection():
                 return
-                
+            
+            # Generate the base line based on user selection
             line = self.getLine()
-            print("Line returned")
-            print(line)
-            
-            # Create a memory layer with the selected layer's crs
-            memLayer = QgsVectorLayer("Polygon?crs=epsg:" + unicode(self.crs.postgisSrid()) + "&index=yes&field=name:string(20)&field=sym:string(20)", self.QUADRAT_LAYER_NAME, "memory") #creating fields in advance for GPX export
-            
-            # Adds memory layer to layer list and turns on editing
-            QgsMapLayerRegistry.instance().addMapLayer(memLayer)
-#            memLayer.startEditing()
-            
+
             # Designates to start at the beginning of the line.
             # TODO Add functionality to reverse the starting point of the line
             start = 0
             
             # Create a list of new features to pass to the data provider
-            quadrats = self.handle_line(start, float(self.ql), line)
+            generatedFeatures = self.handleLine(start, float(self.ql), line)
+#            print("generatedFeatures")
+#            print(generatedFeatures)
             
-            # Add features to memory layer
-            provider = memLayer.dataProvider()
-            provider.addFeatures(quadrats)
+            if self.dlg.generateQuadratsCheck.checkState() == 2:
+                # Create a memory layer with the selected layer's crs
+                memLayer_quadrats = QgsVectorLayer("Polygon?crs=epsg:" + unicode(self.crs.postgisSrid()) + "&index=yes&field=name:string(20)&field=sym:string(20)", self.QUADRAT_LAYER_NAME, "memory") #creating fields in advance for GPX export
+            
+                # Adds memory layer to layer list and turns on editing
+                QgsMapLayerRegistry.instance().addMapLayer(memLayer_quadrats)
+                memLayer_quadrats.startEditing()
+                
+                # Get data provider for this layer
+                self.quadratProvider = memLayer_quadrats.dataProvider()
+                
+                # Add features to memory layer
+                self.quadratProvider.addFeatures(generatedFeatures[0])
+            
+            if self.dlg.generateCentroidsCheck.checkState() == 2:
+                # Create a memory layer with the selected layer's crs
+                memLayer_centroids = QgsVectorLayer("Point?crs=epsg:" + unicode(self.crs.postgisSrid()) + "&index=yes&field=name:string(20)&field=sym:string(20)", self.CENTROID_LAYER_NAME, "memory") #creating fields in advance for GPX export
+            
+                # Adds memory layer to layer list and turns on editing
+                QgsMapLayerRegistry.instance().addMapLayer(memLayer_centroids)
+                memLayer_centroids.startEditing()
+                
+                # Get data provider for this layer
+                self.quadratProvider = memLayer_centroids.dataProvider()
+                
+                # Add features to memory layer
+                self.quadratProvider.addFeatures(generatedFeatures[1])
             
             # Refresh the canvas
             # If caching is enabled, a simple canvas refresh might not be sufficient
@@ -279,8 +299,6 @@ class quadratBuilder:
     def getLine(self):        
         # Set up the line layer
         line = QgsGeometry.fromPolyline([])
-        print("Line created")
-        print(line, line.wkbType())
         
         for feat in self.selectedFeatures:
             # Check selected features are lines
@@ -307,7 +325,7 @@ class quadratBuilder:
         
         return line
         
-    def handle_line(self, start, quadratLength, line):
+    def handleLine(self, start, quadratLength, line):
         ''' Creates quadrats along the line
             https://github.com/rduivenvoorde/featuregridcreator
         '''
@@ -315,23 +333,31 @@ class quadratBuilder:
         distanceAlongLine = start
 #        if 0 < end <= length:
 #            length = end
-        # array with all generated features
-        feats = []
+        # array with all generated quadrats
+        quadrats = []
+        centroids = []
+
         while distanceAlongLine <= length:
-            
             # Get a new set of split quadrats            
             newQuadrat = self.createQuadrat(line, distanceAlongLine, quadratLength)
             # Add each half of the split to a featurethe feature and add the feature to the list
-            for geom in newQuadrat:
-                if geom is not None:
-                    newFeature = QgsFeature()
-                    newFeature.setGeometry(geom)
-                    feats.append(newFeature)
+            for quadrat in newQuadrat:
+                if quadrat is not None:
+                    newQuadratFeature = QgsFeature()
+                    newQuadratFeature.setGeometry(quadrat)
+                    quadrats.append(newQuadratFeature)
+                    
+                    # Create centroid if dialogue box checked
+                    if self.dlg.generateCentroidsCheck.checkState() == 2:
+                        newCentroidFeature = QgsFeature()
+                        newCentroid = quadrat.centroid().asPoint()
+                        newCentroidFeature.setGeometry(QgsGeometry.fromPoint(newCentroid))
+                        centroids.append(newCentroidFeature)
                     
             # Increase the distance by the length of the quadrat
             distanceAlongLine += quadratLength
             
-        return feats
+        return quadrats, centroids
     
     def createQuadrat(self, line, distanceAlongLine, quadratLength):
         ''' Creates quadrats along line by making a temp line for the length of the quadrat and
@@ -343,8 +369,10 @@ class quadratBuilder:
         # Get point that will be the end of this quadrat
         endPoint = line.interpolate(distanceAlongLine + quadratLength)
         
+        # Create temporary line that is the length of the quadrat
         tempLine = QgsGeometry.fromPolyline([startPoint.asPoint(), endPoint.asPoint()])
         
+        # Wizardry adding extra vertices at bends in the line
         segment1 = line.closestSegmentWithContext(startPoint.asPoint())
         segment2 = line.closestSegmentWithContext(endPoint.asPoint())
         ii = 1
@@ -354,11 +382,13 @@ class quadratBuilder:
             tempLine.insertVertex(new_vertex.x(), new_vertex.y(), ii)
             ii += 1
         
+        # We use a square edge buffer to generate the polygon
         quadrat = tempLine.buffer(self.qw, 12, 2, 0, 1)
+        # And spit it down the middle
         quadrat = self.splitQuadrat(quadrat, line)
-        
+
         return quadrat
-        
+
     def lineSmooth(self, line):
         ''' Takes a line geometry and applies smooth
         '''
