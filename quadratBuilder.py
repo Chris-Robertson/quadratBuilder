@@ -304,7 +304,7 @@ class quadratBuilder:
             nodes.reverse()
             reversedLine = QgsGeometry.fromPolyline(nodes)
             return reversedLine
-            
+        
         return line
         
     def handle_line(self, start, quadratLength, line):
