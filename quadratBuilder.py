@@ -213,13 +213,14 @@ class quadratBuilder:
                 # Open dialogue box again
                 self.run()
 
-            # Gets the features from user selection
-            selectedLayer = self.iface.mapCanvas().currentLayer()
-            selectedFeatures = selectedLayer.selectedFeatures()
-            #line = QgsGeometry()#.fromWkt('GEOMETRYCOLLECTION EMPTY')
+            # Check for valid selection
+            if not self.getSelection():
+                return
+            
+            # Set up the line layer
             line = QgsGeometry.fromPolyline([])
             
-            for feat in selectedFeatures:
+            for feat in self.selectedFeatures:
                 # Check selected features are lines
                 if feat.geometry().wkbType() != QGis.WKBLineString:
                     QMessageBox.warning(self.iface.mainWindow(), self.MSG_BOX_TITLE, "Selected features must be lines", QMessageBox.Ok, QMessageBox.Ok)
@@ -232,16 +233,13 @@ class quadratBuilder:
                 line = self.lineSimplify(line)                
             if self.dlg.smoothCheck:
                 line = self.lineSmooth(line)
-                
-            # Get the crs
-            crs = selectedLayer.crs()
             
             # Create a memory layer with the selected layer's crs
-            memLayer = QgsVectorLayer("Polygon?crs=epsg:" + unicode(crs.postgisSrid()) + "&index=yes&field=name:string(20)&field=sym:string(20)", self.QUADRAT_LAYER_NAME, "memory") #creating fields in advance for GPX export
+            memLayer = QgsVectorLayer("Polygon?crs=epsg:" + unicode(self.crs.postgisSrid()) + "&index=yes&field=name:string(20)&field=sym:string(20)", self.QUADRAT_LAYER_NAME, "memory") #creating fields in advance for GPX export
             
             # Adds memory layer to layer list and turns on editing
             QgsMapLayerRegistry.instance().addMapLayer(memLayer)
-            memLayer.startEditing()
+#            memLayer.startEditing()
             
             # Designates to start at the beginning of the line.
             # TODO Add functionality to reverse the starting point of the line
@@ -259,10 +257,38 @@ class quadratBuilder:
             # to trigger a redraw and you must clear the cached image for the layer
             # http://docs.qgis.org/testing/en/docs/pyqgis_developer_cookbook/vector.html#modifying-vector-layers
             if self.iface.mapCanvas().isCachingEnabled():
-                selectedLayer.setCacheImage(None)
+                self.selectedLayer.setCacheImage(None)
             else:
                 self.iface.mapCanvas().refresh()
+        
+    def getSelection(self):
+        
+        # Check there is a selection and that it is a vector layer
+#        selectedLayer = self.iface.mapCanvas().currentLayer()
+        self.selectedLayer = self.iface.activeLayer()
+        if self.selectedLayer is None:
+            QMessageBox.warning(self.iface.mainWindow(), self.MSG_BOX_TITLE, "Select line vector layer", QMessageBox.Ok, QMessageBox.Ok)
+            return False
+        elif self.selectedLayer.type() > 0:  # 0 = vector, 1 = raster
+            QMessageBox.warning(self.iface.mainWindow(), self.MSG_BOX_TITLE, "Select line vector layer", QMessageBox.Ok, QMessageBox.Ok)
+            return False
+        elif self.selectedLayer.selectedFeatures() == []:
+            QMessageBox.warning(self.iface.mainWindow(), self.MSG_BOX_TITLE, "Select line geometry", QMessageBox.Ok, QMessageBox.Ok)
+            return False
+
+        # Check if selection is a line
+        geom_type = self.selectedLayer.dataProvider().geometryType()
+        if not(geom_type == QGis.WKBLineString or geom_type == QGis.WKBMultiLineString):
+            QMessageBox.warning(self.iface.mainWindow(), self.MSG_BOX_TITLE, "Select line geometry", QMessageBox.Ok, QMessageBox.Ok)
+            return False
+        
+        # Get the crs of the selected layer
+        self.crs = self.selectedLayer.crs()
             
+        # Gets the features from user selection
+        self.selectedFeatures = self.iface.mapCanvas().currentLayer().selectedFeatures()
+        return True
+                
     def handle_line(self, start, quadratLength, line):
         ''' Creates quadrats along the line
             https://github.com/rduivenvoorde/featuregridcreator
