@@ -243,13 +243,12 @@ class quadratBuilder:
             QgsMapLayerRegistry.instance().addMapLayer(memLayer)
             memLayer.startEditing()
             
-            # Create a list of new features to pass to the data provider
-            quadrats = []
-            
+            # Designates to start at the beginning of the line.
+            # TODO Add functionality to reverse the starting point of the line
             start = 0
-            quadrats.extend(self.handle_line(start, float(self.ql), line))
             
-#            quadrats = quadrats.splitQuadrats(quadrats, line)
+            # Create a list of new features to pass to the data provider
+            quadrats = self.handle_line(start, float(self.ql), line)
             
             # Add features to memory layer
             provider = memLayer.dataProvider()
@@ -258,13 +257,15 @@ class quadratBuilder:
             # Refresh the canvas
             # If caching is enabled, a simple canvas refresh might not be sufficient
             # to trigger a redraw and you must clear the cached image for the layer
+            # http://docs.qgis.org/testing/en/docs/pyqgis_developer_cookbook/vector.html#modifying-vector-layers
             if self.iface.mapCanvas().isCachingEnabled():
                 selectedLayer.setCacheImage(None)
             else:
                 self.iface.mapCanvas().refresh()
             
     def handle_line(self, start, quadratLength, line):
-        '''Creates quadrats along the line
+        ''' Creates quadrats along the line
+            https://github.com/rduivenvoorde/featuregridcreator
         '''
         length = line.length()
         distanceAlongLine = start
@@ -273,24 +274,24 @@ class quadratBuilder:
         # array with all generated features
         feats = []
         while distanceAlongLine <= length:
-            # Create a new QgsFeature and assign it the new geometry
             
+            # Get a new set of split quadrats            
             newQuadrat = self.createQuadrat(line, distanceAlongLine, quadratLength)
-            print("newQuadrat")
-            print(newQuadrat)
-            for i in range(len(newQuadrat)):
-                if newQuadrat[i] is not None:
+            # Add each half of the split to a featurethe feature and add the feature to the list
+            for geom in newQuadrat:
+                if geom is not None:
                     newFeature = QgsFeature()
-                    newFeature.setGeometry(newQuadrat[i])
+                    newFeature.setGeometry(geom)
                     feats.append(newFeature)
-            # Increase the distance
+                    
+            # Increase the distance by the length of the quadrat
             distanceAlongLine += quadratLength
+            
         return feats
     
     def createQuadrat(self, line, distanceAlongLine, quadratLength):
         ''' Creates quadrats along line by making a temp line for the length of the quadrat and
-            applying a buffer to it.
-            
+            applying a buffer to it.            
             Borrowed quite heavily from https://github.com/rduivenvoorde/featuregridcreator
         '''
         # Get current point along line
@@ -310,8 +311,7 @@ class quadratBuilder:
             ii += 1
         
         quadrat = tempLine.buffer(self.qw, 12, 2, 0, 1)
-        quadrat = self.splitQuadrat(quadrat, tempLine)
-#        quadrat.splitGeometry(quadrat.asPolygon(), tempLine)
+        quadrat = self.splitQuadrat(quadrat, line)
         
         return quadrat
         
@@ -345,81 +345,27 @@ class quadratBuilder:
     def splitQuadrat(self, quadrat, line):
         ''' Takes a polygon and a line
             Splits the polygon with the line
+            Returns two polygon geometries
+            http://gis.stackexchange.com/a/73888/46345
         '''
-        # Split the quadrat
-#        splitQuadratFirstHalf = quadrat.splitGeometry(line.asPolyline(), True) # true if topological editing is enabled
-        splitQuadratHalf_1 = quadrat.reshapeGeometry(line.asPolyline())
-        return splitQuadratHalf_1
+        # Set up the 2 geometries that will hold the 2 new halves of the split quadrat by copying the incoming polygon
+        quadratSplit = QgsGeometry.fromPolygon(quadrat.asPolygon())        
+        quadratDiff = QgsGeometry.fromPolygon(quadrat.asPolygon())
+        
+        # Split the quadrat with the base line. This will just keep one half of the split.
+        quadratSplit.splitGeometry(line.asPolyline(), False) # true if topological editing is enabled
+        
+        # Get the difference between the split half and the whole quadrat to find the second half of the split.
+        quadratDiff = quadratDiff.difference(quadratSplit)
+        
+        return quadratSplit, quadratDiff
                 
 #==============================================================================
-#     def create_point_or_trench_on_line(self, line, distance, interval):
-#         # Get a point on the line at current distance
-#         geom = line.interpolate(distance)  # interpolate returns a QgsGeometry
-#         # trench width and length in meters
-#         w = self.qw
-#         l = self.ql
-#         x1 = geom.asPoint().x()
-#         y1 = geom.asPoint().y()
-#         # a non rotated trench
-#         #return QgsGeometry.fromRect(QgsRectangle(x1-l, y1-w, x1+l, y1+w))
-#         # a trench in the direction of the line
-#         geom2 = line.interpolate(distance + l)  # interpolate returns a QgsGeometry-point
-#         vertices = [geom.asPoint()]
-#         # BUT check if there are vertices on this line_geom in between
-#         # see if there are vertices on the path here...
-#         vertices.append(geom2.asPoint())
-#         newLine = QgsGeometry.fromPolyline(vertices)
-#         # checking if length of the generated line is as requested
-#         # if the difference is more then 1 cm (comparing floats....)
-#         # we either do NOT add it, or generate rounded caps
-#         #if (int(l) - int(line.length())) > 1.0:
-#             # buffer(distance, segments, endcapstyle, joinstyle, mitrelimit)
-#             # endcap 2 = flat
-#             # join 1 = round
-#             #trench = line.buffer(w/2, 4, 1, 1, 1)
-#             #trench = None
-#             # print line_geom.touches(geom2)  # true
-#             # line.closestSegmentWithContext(point, minDistPoint, afterVertex, 0, 0.00000001)
-#             # returns a segmentWithContext like: (0.0, (104642,490373), 2)
-#             # being: distance, point, segmentAfter
-#         segment_context = line.closestSegmentWithContext(geom.asPoint())
-#         segment_context2 = line.closestSegmentWithContext(geom2.asPoint())
-#         ii = 1
-#         for i in range(segment_context[2], segment_context2[2]):
-#             #new_vertex = line_geom.vertexAt(segment_context[2])
-#             new_vertex = line.vertexAt(i)
-#             newLine.insertVertex(new_vertex.x(), new_vertex.y(), ii)
-#             ii += 1
-#         trench = line.buffer(w, 0, 2, 1, 1)
-#         # trench = line.buffer(w/2, 1, 1, 1, 1) # 'round' endcap
-#         return trench#, self.RESULT_FEATURE_TRENCH_BENDED_OR_SHORT  # 2 meaning this is not a straight trench (a bended one)
+#  GPX
+#  uri = "path/to/gpx/file.gpx?type=track"
+#  vlayer = QgsVectorLayer(uri, "layer name you like", "gpx")
 #==============================================================================
-#        else:
-#            # buffer(distance, segments, endcapstyle, joinstyle, mitrelimit)
-#            # endcap 2 = flat
-#            # join 1 = round
-#            trench = line.singleSidedBuffer(w, 0, SideLeft, 1, 1)
-#            return trench#, self.RESULT_FEATURE_TRENCH_STRAIGHT  # 1 meaning a straigh trench
-#            else:
-#                # a line with points
-#                return geom, self.RESULT_FEATURE_POINT  # 0 meaning a point
-        
-            # Clean up after everything is done
-#            selectedLayer.removeSelection()
-            
-#==============================================================================
-# GPX
-# uri = "path/to/gpx/file.gpx?type=track"
-# vlayer = QgsVectorLayer(uri, "layer name you like", "gpx")
-#==============================================================================
-#==============================================================================
-# # If caching is enabled, a simple canvas refresh might not be sufficient
-# # to trigger a redraw and you must clear the cached image for the layer
-# if iface.mapCanvas().isCachingEnabled():
-#     layer.setCacheImage(None)
-# else:
-#     iface.mapCanvas().refresh()
-#==============================================================================
+
 #==============================================================================
 # Symbol Renderer
 # # http://snorf.net/blog/2014/03/04/symbology-of-vector-layers-in-qgis-python-plugins/
@@ -446,23 +392,3 @@ class quadratBuilder:
 # renderer = QgsCategorizedSymbolRendererV2(expression, categories)
 # memory_lyr.setRendererV2(renderer)
 #==============================================================================
-    
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
