@@ -235,7 +235,7 @@
      <x>200</x>
      <y>150</y>
      <width>171</width>
-     <height>161</height>
+     <height>81</height>
     </rect>
    </property>
    <property name="title">
@@ -275,6 +275,32 @@
       <widget class="QDoubleSpinBox" name="simpleTolerance"/>
      </item>
     </layout>
+   </widget>
+  </widget>
+  <widget class="QGroupBox" name="groupBox_4">
+   <property name="geometry">
+    <rect>
+     <x>200</x>
+     <y>240</y>
+     <width>171</width>
+     <height>71</height>
+    </rect>
+   </property>
+   <property name="title">
+    <string>Line Direction</string>
+   </property>
+   <widget class="QCheckBox" name="reverseCheck">
+    <property name="geometry">
+     <rect>
+      <x>20</x>
+      <y>20</y>
+      <width>141</width>
+      <height>17</height>
+     </rect>
+    </property>
+    <property name="text">
+     <string>Reverse Line Direction</string>
+    </property>
    </widget>
   </widget>
  </widget>

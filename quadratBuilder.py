@@ -216,23 +216,10 @@ class quadratBuilder:
             # Check for valid selection
             if not self.getSelection():
                 return
-            
-            # Set up the line layer
-            line = QgsGeometry.fromPolyline([])
-            
-            for feat in self.selectedFeatures:
-                # Check selected features are lines
-                if feat.geometry().wkbType() != QGis.WKBLineString:
-                    QMessageBox.warning(self.iface.mainWindow(), self.MSG_BOX_TITLE, "Selected features must be lines", QMessageBox.Ok, QMessageBox.Ok)
-                    return                    
-                # Combine multiple lines
-                line = line.combine(feat.geometry())
-            
-            # Apply Simplify and Smoothing if checked
-            if self.dlg.simplifyCheck:
-                line = self.lineSimplify(line)                
-            if self.dlg.smoothCheck:
-                line = self.lineSmooth(line)
+                
+            line = self.getLine()
+            print("Line returned")
+            print(line)
             
             # Create a memory layer with the selected layer's crs
             memLayer = QgsVectorLayer("Polygon?crs=epsg:" + unicode(self.crs.postgisSrid()) + "&index=yes&field=name:string(20)&field=sym:string(20)", self.QUADRAT_LAYER_NAME, "memory") #creating fields in advance for GPX export
@@ -288,7 +275,38 @@ class quadratBuilder:
         # Gets the features from user selection
         self.selectedFeatures = self.iface.mapCanvas().currentLayer().selectedFeatures()
         return True
-                
+    
+    def getLine(self):        
+        # Set up the line layer
+        line = QgsGeometry.fromPolyline([])
+        print("Line created")
+        print(line, line.wkbType())
+        
+        for feat in self.selectedFeatures:
+            # Check selected features are lines
+            if feat.geometry().wkbType() != QGis.WKBLineString:
+                QMessageBox.warning(self.iface.mainWindow(), self.MSG_BOX_TITLE, "Selected features must be lines", QMessageBox.Ok, QMessageBox.Ok)
+                return                    
+
+            # Combine multiple lines
+            line = line.combine(feat.geometry())
+        
+        # Apply Simplify and Smoothing if checked
+        if self.dlg.simplifyCheck.checkState() == 2: # 0 = Unchecked, 1 = Partially checked (for hierarchies), 2 = Checked
+            line = self.lineSimplify(line)                
+        if self.dlg.smoothCheck.checkState() == 2:
+            line = self.lineSmooth(line)
+            
+        # Reverse line direction if checked
+        # http://gis.stackexchange.com/a/9285/46345
+        if self.dlg.reverseCheck.checkState() == 2:
+            nodes = line.asPolyline()
+            nodes.reverse()
+            reversedLine = QgsGeometry.fromPolyline(nodes)
+            return reversedLine
+            
+        return line
+        
     def handle_line(self, start, quadratLength, line):
         ''' Creates quadrats along the line
             https://github.com/rduivenvoorde/featuregridcreator
