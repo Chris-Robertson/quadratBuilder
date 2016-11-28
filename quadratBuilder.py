@@ -237,7 +237,7 @@ class quadratBuilder:
             
                 # Adds memory layer to layer list and turns on editing
                 QgsMapLayerRegistry.instance().addMapLayer(memLayer_quadrats)
-                memLayer_quadrats.startEditing()
+                # memLayer_quadrats.startEditing()
                 
                 # Get data provider for this layer
                 self.quadratProvider = memLayer_quadrats.dataProvider()
@@ -251,7 +251,7 @@ class quadratBuilder:
             
                 # Adds memory layer to layer list and turns on editing
                 QgsMapLayerRegistry.instance().addMapLayer(memLayer_centroids)
-                memLayer_centroids.startEditing()
+                # memLayer_centroids.startEditing()
                 
                 # Get data provider for this layer
                 self.quadratProvider = memLayer_centroids.dataProvider()
@@ -442,18 +442,18 @@ class quadratBuilder:
         return quadratSplit, quadratDiff
     
     def labelLayer(self, layer):
-    	''' Labels the passed layer.
-    		http://gis.stackexchange.com/a/77963/46345
-		'''
-		palyr = QgsPalLayerSettings()
-		palyr.readFromLayer(layer)
-		palyr.enabled = True
-		palyr.fieldName = 'name'
-		palyr.placement= QgsPalLayerSettings.OverPoint
-		palyr.setDataDefinedProperty(QgsPalLayerSettings.Size,True,True,'12','')
-		palyr.writeToLayer(layer)
+        ''' Labels the passed layer.
+          http://gis.stackexchange.com/a/77963/46345
+        '''
+        palyr = QgsPalLayerSettings()
+        palyr.readFromLayer(layer)
+        palyr.enabled = True
+        palyr.fieldName = 'name'
+        palyr.placement= QgsPalLayerSettings.OverPoint
+        palyr.setDataDefinedProperty(QgsPalLayerSettings.Size,True,True,'12','')
+        palyr.writeToLayer(layer)
 
-		return None
+        return None
 
 #==============================================================================
 #  GPX
