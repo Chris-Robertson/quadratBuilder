@@ -337,6 +337,8 @@ class quadratBuilder:
         quadrats = []
         centroids = []
 
+        featureNumber = 1
+
         while distanceAlongLine <= length:
             # Get a new set of split quadrats            
             newQuadrat = self.createQuadrat(line, distanceAlongLine, quadratLength)
@@ -344,16 +346,20 @@ class quadratBuilder:
             for quadrat in newQuadrat:
                 if quadrat is not None:
                     newQuadratFeature = QgsFeature()
+                    newQuadratFeature.setAttributes([featureNumber, 'City (Large)'])
                     newQuadratFeature.setGeometry(quadrat)
                     quadrats.append(newQuadratFeature)
                     
                     # Create centroid if dialogue box checked
                     if self.dlg.generateCentroidsCheck.checkState() == 2:
                         newCentroidFeature = QgsFeature()
+                        newCentroidFeature.setAttributes([featureNumber, 'City (Large)'])
                         newCentroid = quadrat.centroid().asPoint()
                         newCentroidFeature.setGeometry(QgsGeometry.fromPoint(newCentroid))
                         centroids.append(newCentroidFeature)
-                    
+                
+                featureNumber += 1
+            
             # Increase the distance by the length of the quadrat
             distanceAlongLine += quadratLength
             
