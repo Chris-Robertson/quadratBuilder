@@ -259,6 +259,8 @@ class quadratBuilder:
                 # Add features to memory layer
                 self.quadratProvider.addFeatures(generatedFeatures[1])
             
+        	self.labelLayer(memLayer_centroids)
+
             # Refresh the canvas
             # If caching is enabled, a simple canvas refresh might not be sufficient
             # to trigger a redraw and you must clear the cached image for the layer
@@ -268,8 +270,7 @@ class quadratBuilder:
             else:
                 self.iface.mapCanvas().refresh()
         
-    def getSelection(self):
-        
+    def getSelection(self):        
         # Check there is a selection and that it is a vector layer
 #        selectedLayer = self.iface.mapCanvas().currentLayer()
         self.selectedLayer = self.iface.activeLayer()
@@ -439,7 +440,21 @@ class quadratBuilder:
         quadratDiff = quadratDiff.difference(quadratSplit)
         
         return quadratSplit, quadratDiff
-                
+    
+    def labelLayer(self, layer):
+    	''' Labels the passed layer.
+    		http://gis.stackexchange.com/a/77963/46345
+		'''
+		palyr = QgsPalLayerSettings()
+		palyr.readFromLayer(layer)
+		palyr.enabled = True
+		palyr.fieldName = 'name'
+		palyr.placement= QgsPalLayerSettings.OverPoint
+		palyr.setDataDefinedProperty(QgsPalLayerSettings.Size,True,True,'12','')
+		palyr.writeToLayer(layer)
+
+		return None
+
 #==============================================================================
 #  GPX
 #  uri = "path/to/gpx/file.gpx?type=track"
