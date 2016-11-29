@@ -443,8 +443,8 @@ class quadratBuilder:
     
     def labelLayer(self, layer):
         ''' Labels the passed layer.
-          http://gis.stackexchange.com/a/77963/46345
         '''
+        # http://gis.stackexchange.com/a/77963/46345
         palyr = QgsPalLayerSettings()
         palyr.readFromLayer(layer)
         palyr.enabled = True
@@ -452,6 +452,16 @@ class quadratBuilder:
         palyr.placement= QgsPalLayerSettings.OverPoint
         palyr.setDataDefinedProperty(QgsPalLayerSettings.Size,True,True,'12','')
         palyr.writeToLayer(layer)
+
+        # Applys buffer to label text. I'm unsure how to do that with the above code, so this is my answer
+        # http://gis.stackexchange.com/q/166218/46345
+        layer.setCustomProperty("labeling", "pal")
+        layer.setCustomProperty("labeling/isExpression", True)
+        layer.setCustomProperty("labeling/enabled", True)
+        layer.setCustomProperty("labeling/bufferDraw", True)
+        layer.setCustomProperty("labeling/bufferSize", "1")
+        layer.setCustomProperty("labeling/bufferColor", "white")
+        layer.setCustomProperty("labeling/fontFamily", "Trebuchet MS")
 
         return None
 
