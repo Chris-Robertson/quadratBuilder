@@ -28,7 +28,9 @@ from qgis.gui import *
 import resources
 # Import the code for the dialog
 from quadratBuilder_dialog import quadratBuilderDialog
+
 import os.path
+import processing
 
 
 class quadratBuilder:
@@ -230,6 +232,10 @@ class quadratBuilder:
             generatedFeatures = self.handleLine(start, float(self.ql), line)
 #            print("generatedFeatures")
 #            print(generatedFeatures)
+            # QgsGeometry.unaryUnion(generatedFeatures[1])
+            # newGeometry = QgsGeometry.fromPolygon([])
+            # for geom in generatedFeatures[1]: 
+            #     newGeometry = newGeometry.combine(geom.geometry())
             
             if self.dlg.generateQuadratsCheck.checkState() == 2:
                 # Create a memory layer with the selected layer's crs
@@ -259,7 +265,15 @@ class quadratBuilder:
                 # Add features to memory layer
                 self.quadratProvider.addFeatures(generatedFeatures[1])
             
-        	self.labelLayer(memLayer_centroids)
+            # Convert the polygon quadrat layer to lines to be merged
+            # memLayer_polygonToLine = QgsVectorLayer("Polyline?crs=epsg:" + unicode(self.crs.postgisSrid()) + "&index=yes&field=name:string(20)&field=sym:string(20)", self.CENTROID_LAYER_NAME, "memory") #creating fields in advance for GPX export
+
+            # processing.runalg("qgis:polygonstolines", memLayer_quadrats, memLayer_polygonToLine)
+            # processing.runandload("qgis:polygonstolines", Quadrats, polygonToLine)
+
+            
+
+            self.labelLayer(memLayer_centroids)
 
             # Refresh the canvas
             # If caching is enabled, a simple canvas refresh might not be sufficient
@@ -313,12 +327,12 @@ class quadratBuilder:
         # Apply Simplify and Smoothing if checked
         if self.dlg.simplifyCheck.checkState() == 2: # 0 = Unchecked, 1 = Partially checked (for hierarchies), 2 = Checked
             line = self.lineSimplify(line)                
-        if self.dlg.smoothCheck.checkState() == 2:
+        if self.dlg.smoothCheck.checkState() == 2: # 0 = Unchecked, 1 = Partially checked (for hierarchies), 2 = Checked
             line = self.lineSmooth(line)
             
         # Reverse line direction if checked
         # http://gis.stackexchange.com/a/9285/46345
-        if self.dlg.reverseCheck.checkState() == 2:
+        if self.dlg.reverseCheck.checkState() == 2: # 0 = Unchecked, 1 = Partially checked (for hierarchies), 2 = Checked
             nodes = line.asPolyline()
             nodes.reverse()
             reversedLine = QgsGeometry.fromPolyline(nodes)
@@ -337,6 +351,8 @@ class quadratBuilder:
         # array with all generated quadrats
         quadrats = []
         centroids = []
+        labelSides = self.dlg.labelSidesCheck.checkState()  # 0 = Unchecked, 1 = Partially checked (for hierarchies), 2 = Checked
+        labelSidesSkip = True
 
         featureNumber = 1
 
@@ -352,14 +368,23 @@ class quadratBuilder:
                     quadrats.append(newQuadratFeature)
                     
                     # Create centroid if dialogue box checked
-                    if self.dlg.generateCentroidsCheck.checkState() == 2:
+                    if self.dlg.generateCentroidsCheck.checkState() == 2: # 0 = Unchecked, 1 = Partially checked (for hierarchies), 2 = Checked
                         newCentroidFeature = QgsFeature()
                         newCentroidFeature.setAttributes([featureNumber, 'City (Large)'])
                         newCentroid = quadrat.centroid().asPoint()
                         newCentroidFeature.setGeometry(QgsGeometry.fromPoint(newCentroid))
                         centroids.append(newCentroidFeature)
                 
-                featureNumber += 1
+                # Label both sides of the quadrat with the same number if the user has the option checked
+                if labelSides:
+                    if not labelSidesSkip:
+                        featureNumber += 1
+                        labelSidesSkip = True
+                    else:
+                        labelSidesSkip = False
+                else:
+                    featureNumber += 1
+
             
             # Increase the distance by the length of the quadrat
             distanceAlongLine += quadratLength
