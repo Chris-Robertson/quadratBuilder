@@ -354,6 +354,15 @@ class quadratBuilder:
         labelSides = self.dlg.labelSidesCheck.checkState()  # 0 = Unchecked, 1 = Partially checked (for hierarchies), 2 = Checked
         labelSidesSkip = True
 
+        # Get user prefix and suffix value
+        prefixLeft = self.dlg.prefixLeft.text()
+        prefixRight = self.dlg.prefixRight.text()
+        suffixLeft = self.dlg.suffixLeft.text()
+        suffixRight = self.dlg.suffixRight.text()
+
+        # Track which side of the line we are on
+        rightSide = True
+
         featureNumber = 1
 
         while distanceAlongLine <= length:
@@ -363,14 +372,24 @@ class quadratBuilder:
             for quadrat in newQuadrat:
                 if quadrat is not None:
                     newQuadratFeature = QgsFeature()
-                    newQuadratFeature.setAttributes([featureNumber, 'City (Large)'])
+                    # if rightSide:
+                    #     newQuadratFeature.setAttributes([prefixRight + str(featureNumber) + suffixRight, 'City (Large)'])
+                    #     rightSide = False
+                    # else:
+                    #     newQuadratFeature.setAttributes([prefixLeft + str(featureNumber) + suffixLeft, 'City (Large)'])
+                    #     rightSide = True
                     newQuadratFeature.setGeometry(quadrat)
                     quadrats.append(newQuadratFeature)
                     
                     # Create centroid if dialogue box checked
                     if self.dlg.generateCentroidsCheck.checkState() == 2: # 0 = Unchecked, 1 = Partially checked (for hierarchies), 2 = Checked
                         newCentroidFeature = QgsFeature()
-                        newCentroidFeature.setAttributes([featureNumber, 'City (Large)'])
+                        if rightSide:
+                            newCentroidFeature.setAttributes([prefixRight + str(featureNumber) + suffixRight, 'City (Large)'])
+                            rightSide = False
+                        else:
+                            newCentroidFeature.setAttributes([prefixLeft + str(featureNumber) + suffixLeft, 'City (Large)'])
+                            rightSide = True
                         newCentroid = quadrat.centroid().asPoint()
                         newCentroidFeature.setGeometry(QgsGeometry.fromPoint(newCentroid))
                         centroids.append(newCentroidFeature)
